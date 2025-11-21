@@ -9,7 +9,12 @@ states = ["W","R","S"]
 
 #observations: L=0, M=1, H=2
 obs_map = {"L": 0, "M": 1, "H": 2}
-observations = np.array([obs_map["M"], obs_map["H"], obs_map["L"]])
+obs_seq = ["M", "H", "L"]
+obs_indices = np.array([obs_map[o] for o in obs_seq])
+
+#convert observations to one-hot count vectors (required for n_trials=1)
+observations = np.zeros((len(obs_indices), 3), dtype=int)
+observations[np.arange(len(obs_indices)), obs_indices] = 1
 
 #initial probabilities
 pi = np.array([0.4, 0.3, 0.3])
@@ -29,35 +34,38 @@ B = np.array([
 ])
 
 #create multinomial HMM
-model = hmm.MultinomialHMM(n_components=3, init_params="", params="")
+model = hmm.MultinomialHMM(n_components=3, n_trials=1, init_params="", params="")
 model.startprob_ = pi
 model.transmat_ = A
 model.emissionprob_ = B
 
 #b
-logprob = model.score(observations.reshape(-1, 1))
+logprob = model.score(observations)
 forward_probability = np.exp(logprob)
 print("Forward probability P(M,H,L) =", forward_probability)
 
 #c
-logprob_v, hidden_states = model.decode(observations.reshape(-1, 1), algorithm="viterbi")
+logprob_v, hidden_states = model.decode(observations, algorithm="viterbi")
 decoded_sequence = [states[s] for s in hidden_states]
 
 print("Viterbi most likely state sequence:", decoded_sequence)
 print("Viterbi log probability:", logprob_v)
 
-#Virtebi is preffered over brute force because bruteforce requires checking all possible sequences 
-#of hidden states (3^T) which grows exponentially with sequence length. Viterbi runs in O(N^2*t) (poly time,which is way better than exponential time)
+#why is Viterbi preferred over brute force?
+#because brute force requires checking all possible sequences of hidden states (3^T)
+#which grows exponentially with sequence length. Viterbi runs in O(N^2*t)
 
 #d
 N = 10000
 count = 0
 
-target = tuple(observations)
+target = tuple(obs_indices)
 
 for _ in range(N):
     X, _ = model.sample(3)
-    if tuple(X.flatten()) == target:
+    #flatten and convert to indices for comparison
+    sampled_indices = np.argmax(X, axis=1)
+    if tuple(sampled_indices) == target:
         count += 1
 
 empirical_prob = count / N
