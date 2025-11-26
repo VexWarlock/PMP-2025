@@ -3,60 +3,45 @@ import arviz as az
 import numpy as np
 import matplotlib.pyplot as plt
 
-# All combinations
 Y_values = [0, 5, 10]
 theta_values = [0.2, 0.5]
 
-# Store posterior traces for visualization
-posterior_results = {}
+posteriors = {}
+predictives = {}
 
 for Y in Y_values:
     for theta in theta_values:
         with pm.Model() as model:
-            # Prior: n ~ Poisson(10)
             n = pm.Poisson("n", mu=10)
-
-            # Likelihood: Y ~ Binomial(n, θ)
-            Y_obs = pm.Binomial("Y_obs", n=n, p=theta, observed=Y)
-
+            y_obs = pm.Binomial("y_obs", n=n, p=theta, observed=Y)
+            
             # Sample posterior
-            trace = pm.sample(2000, tune=1000, cores=1, chains=2, progressbar=False)
+            trace = pm.sample(2000, tune=1000, cores=1, progressbar=False)
+            
+            # Posterior predictive
+            y_pred = pm.sample_posterior_predictive(trace, var_names=["y_obs"], progressbar=False, random_seed=42)
+        
+        key = f"Y={Y}, θ={theta}"
+        posteriors[key] = trace
+        predictives[key] = y_pred
 
-            posterior_results[(Y, theta)] = trace
-
-# One big posterior plot
-_, axs = plt.subplots(len(Y_values), len(theta_values), figsize=(12, 10))
-
+# Plot posterior distributions of n
+fig, axes = plt.subplots(len(Y_values), len(theta_values), figsize=(12, 8))
 for i, Y in enumerate(Y_values):
     for j, theta in enumerate(theta_values):
-        ax = axs[i, j]
-        az.plot_posterior(
-            posterior_results[(Y, theta)],
-            var_names=["n"],
-            ax=ax,
-        )
-        ax.set_title(f"Posterior for n | Y={Y}, θ={theta}")
-
+        key = f"Y={Y}, θ={theta}"
+        az.plot_posterior(posteriors[key].posterior["n"], ax=axes[i, j])
+        axes[i, j].set_title(key)
 plt.tight_layout()
 plt.show()
 
-# PART (c): Predictive posterior for Y*
-for Y in Y_values:
-    for theta in theta_values:
-        trace = posterior_results[(Y, theta)]
-
-        with pm.Model() as predictive_model:
-            # n is drawn from posterior of n
-            n_post = pm.Poisson("n", mu=10)
-            # But we replace it with posterior samples
-            pm.set_data({"n": trace.posterior["n"].values.flatten()})
-
-            # Predictive Y*
-            Y_future = pm.Binomial("Y_future", n=n_post, p=theta)
-
-            pred_samples = pm.sample_prior_predictive(samples=3000)
-
-        az.plot_dist(pred_samples["Y_future"], 
-                     label=f"Y* | Y={Y}, θ={theta}")
-        plt.legend()
-        plt.show()
+# Plot predictive distributions of Y*
+fig, axes = plt.subplots(len(Y_values), len(theta_values), figsize=(12, 8))
+for i, Y in enumerate(Y_values):
+    for j, theta in enumerate(theta_values):
+        key = f"Y={Y}, θ={theta}"
+        y_samples = predictives[key].posterior_predictive["y_obs"].values.flatten()
+        az.plot_dist(y_samples, ax=axes[i, j])
+        axes[i, j].set_title(f"Predictive {key}")
+plt.tight_layout()
+plt.show()
